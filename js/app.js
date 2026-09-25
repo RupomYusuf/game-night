@@ -6,6 +6,7 @@ import { h, qs, toast, modal, confirmModal, confettiBurst, confetti } from './ui
 import { sfx, haptic, buzz, toggleSound, toggleHaptics, toggleTheme } from './sound.js';
 import { buildChat, chatRoot, setChatMode, openSheet, closeSheet, ensureFab, removeFab, setUnread, onIncomingChat, onPeerSeen, setPeerTyping, onPeerReact, chatShown } from './chat.js';
 import { openGame, closeGame, resumeGame, onRemoteAction, onSnapshot, active as activeGame, getGame } from './games/engine.js';
+import { acceptJoin, rejectJoin } from './net.js';
 import { classicMeta, adultMeta, gameMeta } from './games/registry.js';
 
 let screen = 'home';
@@ -67,6 +68,29 @@ function wireEvents() {
   on('typing', (p) => setPeerTyping(!!p.on));
   on('react', (p) => onPeerReact(p));
   on('unread', (n) => setUnread(n));
+
+  /* host side: someone wants to join this night */
+  on('incoming-join', ({ info }) => {
+    if (G.peer.connected) {
+      rejectJoin('This night already has two players — it is a private table for two. 💞');
+      return;
+    }
+    const capMedia = (list) => {
+      let seen = 0;
+      return [...list].reverse().map((e) => {
+        if (e.kind === 'media' && e.dataURL) { seen++; if (seen > 8) return { ...e, dataURL: null, expired: true }; }
+        return e;
+      }).reverse();
+    };
+    G.peer = { name: info.name || 'Partner', emoji: info.emoji || '💖', connected: false, graceEndsAt: null };
+    acceptJoin({
+      peer: { name: G.me.name, emoji: G.me.emoji, connected: true, graceEndsAt: null },
+      chat: capMedia(G.chat).map((e) => ({ ...e, data: e.dataURL || null })),
+      scores: G.scores, unlocked: G.unlocked18,
+      activeGame: G.activeGame, gameState: activeGame()?.state || null,
+    });
+    emit('presence', { connected: true, name: G.peer.name });
+  });
 
   on('presence', (p) => {
     const wasConnected = G.peer.connected;
@@ -204,7 +228,7 @@ function showHome(prefill = '') {
 
 function showWait() {
   buildChat();
-  const link = `${location.origin}/?join=${G.me.code}`;
+  const link = `${location.origin}${location.pathname.replace(/index\.html$/, '')}?join=${G.me.code}`;
   swap(h('div', { class: 'screen wait', 'data-screen': 'wait' },
     h('div', { class: 'wait-inner' },
       h('div', { class: 'logo' },
