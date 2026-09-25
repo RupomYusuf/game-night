@@ -81,7 +81,7 @@ function sendText(input, textOverride) {
 }
 
 function pushLocal(msg) {
-  const entry = { ...msg, mine: true, status: 'sent', reactions: {} };
+  const entry = { ...msg, from: G.me.role, mine: true, status: 'sent', reactions: {} };
   G.chat.push(entry);
   appendBubble(entry);
   scrollBottom();

@@ -34,6 +34,7 @@ export function closeGame() {
   stopTicking();
   cur = null;
   G.activeGame = null;
+  try { sessionStorage.removeItem('gn.game'); } catch { /* */ }
   send('game-close', {});
   emit('game-closed', {});
 }
@@ -126,6 +127,7 @@ export function onSnapshot(p) {
 function broadcast() {
   if (!cur) return;
   hClock = { at: Date.now(), now: Date.now() };
+  try { sessionStorage.setItem('gn.game', JSON.stringify({ activeGame: G.activeGame, state: cur.state })); } catch { /* */ }
   send('game-state', { s: cur.state, hnow: Date.now() });
 }
 
