@@ -1,0 +1,10 @@
+# Render blueprint — deploy Game Night with one click.
+# Push this repo to GitHub, then in Render: New + → Blueprint → pick this repo.
+services:
+  - type: web
+    name: game-night
+    runtime: node
+    plan: free
+    startCommand: node server.js
+    healthCheckPath: /
+    autoDeploy: true
