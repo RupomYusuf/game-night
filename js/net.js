@@ -14,7 +14,24 @@ let graceTimer = null;
 let retryTimer = null;
 const partials = new Map(); // media chunk reassembly: id -> { meta, chunks }
 
-const PEER_OPTS = { debug: 0 };
+/* Signaling rides the free PeerJS broker; the media path is direct WebRTC.
+   STUN alone gets the two tabs introduced but cannot relay traffic — when the
+   partners sit behind different strict NATs (mobile data, CG-NAT, VPNs) the
+   direct link needs a TURN fallback or the join simply never opens. */
+const PEER_OPTS = {
+  debug: 0,
+  config: {
+    iceCandidatePoolSize: 4,
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turns:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    ],
+  },
+};
 const GRACE_MS = 60_000;
 const CHUNK = 60_000; // ~60KB of base64 per message
 
@@ -96,31 +113,45 @@ function destroyPeer() {
   conn = null; peer = null; incoming = null; G.online = false;
 }
 
+/* The broker socket only handles signaling, but if it drops mid-session we
+   quietly re-register so new joins and rejoins keep working. */
+function keepBroker(p) {
+  p.on('disconnected', () => {
+    setTimeout(() => { try { p.reconnect(); } catch { /* */ } }, 1500);
+  });
+}
+
 /* ---------------- host: own the room ---------------- */
 
 async function hostCreate({ name, emoji, code }) {
   const reclaim = !!code;
   const attempts = reclaim ? 40 : 12;
   const delay = reclaim ? 700 : 60;
+  let lastType = '';
   for (let attempt = 0; attempt < attempts; attempt++) {
     const c = code || genCode();
     const ok = await new Promise((resolve) => {
       let settled = false;
       const p = new Peer(peerIdFor(c), PEER_OPTS);
+      keepBroker(p);
       p.on('open', () => { if (!settled) { settled = true; peer = p; wireHost(p); resolve(true); } });
       p.on('error', (e) => {
         if (settled) return;
         settled = true; try { p.destroy(); } catch { /* */ }
-        resolve(String(e && e.type) === 'unavailable-id');
+        lastType = String(e && e.type);
+        resolve(lastType === 'unavailable-id');
       });
     });
     if (ok) return { code: c };
-    if (!reclaim) await wait(delay);
-    else await wait(delay);
+    // a dead/slow broker deserves patience; a taken code just moves to the next one
+    const settle = reclaim ? delay : (lastType && lastType !== 'unavailable-id' ? 900 : delay);
+    await wait(settle);
   }
-  throw new Error(reclaim
-    ? 'Could not reclaim your night — it may have been open elsewhere. Start a new one?'
-    : 'Could not open a night — try again.');
+  throw new Error(lastType && lastType !== 'unavailable-id'
+    ? 'Could not reach the matchmaking server — check your internet and try again. 🌙'
+    : reclaim
+      ? 'Could not reclaim your night — it may have been open elsewhere. Start a new one?'
+      : 'Could not open a night — try again.');
 }
 
 function wireHost(p) {
@@ -141,10 +172,12 @@ function guestJoin({ code, name, emoji, token }) {
       peer = null;
       reject(err);
     };
-    const timer = setTimeout(() => fail(new Error('The host is not answering — check the code or try again. 🌙')), 14000);
+    // TURN relays take longer than a direct link to negotiate — give it room
+    const timer = setTimeout(() => fail(new Error('Could not reach the host — make sure their tab is still open, then try again. If it keeps failing, both of you should retry once; strict networks need an extra moment. 🌙')), 25000);
 
     const p = new Peer(PEER_OPTS);
     peer = p;
+    keepBroker(p);
     p.on('error', (e) => {
       if (settled) return;
       const type = String(e && e.type);
@@ -153,6 +186,14 @@ function guestJoin({ code, name, emoji, token }) {
     });
     p.on('open', () => {
       const c = p.connect(peerIdFor(code), { reliable: true });
+      // fail fast when the two networks cannot link at all (STUN+TURN exhausted)
+      const onIce = (state) => {
+        if (!settled && state === 'failed') {
+          fail(new Error('The two networks could not connect directly — a VPN, firewall or very strict network is likely blocking it. Try again, or switch one of you to another network. 🌙'));
+        }
+      };
+      c.on('iceStateChanged', onIce);
+      try { c.peerConnection?.addEventListener?.('iceconnectionstatechange', () => onIce(c.peerConnection.iceConnectionState)); } catch { /* */ }
       c.on('open', () => {
         c.send({ t: 'join-req', p: { name, emoji, token, code } });
       });
