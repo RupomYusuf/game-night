@@ -40,6 +40,8 @@ function randomFleet() {
 }
 
 const allMyShipsSunk = () => myFleet && myFleet.every((ship) => ship.cells.every((c) => lastSeen.shotsAgainst.has(c)));
+const canPlace = (board, cells) => cells.every((c) => board[c] === 0);
+const shipCells = (x, y, horiz, size) => Array.from({ length: size }, (_, k) => (horiz ? y * SIZE + x + k : (y + k) * SIZE + x));
 function sunkShipName(idx) {
   for (const ship of myFleet || []) {
     if (ship.cells.includes(idx)) {
@@ -126,8 +128,8 @@ registerGame({
         const horiz = placing.horiz;
         const x = Math.min(i % SIZE, SIZE - (horiz ? ship.size : 1));
         const y = Math.min(Math.floor(i / SIZE), SIZE - (horiz ? 1 : ship.size));
-        const cells = Array.from({ length: ship.size }, (_, k) => (horiz ? y * SIZE + x + k : (y + k) * SIZE + x));
-        if (!cells.every((c) => !myBoard[c])) { sfx.miss(); return; }
+        const cells = shipCells(x, y, horiz, ship.size);
+        if (!canPlace(myBoard, cells)) { sfx.miss(); return; }
         cells.forEach((c) => { myBoard[c] = 1; });
         myFleet.push({ id: ship.id, cells });
         sfx.pop();
