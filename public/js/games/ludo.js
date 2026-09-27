@@ -112,37 +112,56 @@ function buildBoard() {
   els.dice = h('div', { class: 'ldice' });
 }
 
-function placeToken(role, i, p, instant) {
-  const t = els.tokens[role][i];
-  let x, y;
-  if (p === -1) [x, y] = YARD[role][i];
-  else [x, y] = cellOf(role, p);
-  if (instant) t.classList.add('noanim');
-  t.style.setProperty('--tx', (x + 0.5) / 15 * 100 + '%');
-  t.style.setProperty('--ty', (y + 0.5) / 15 * 100 + '%');
-  if (instant) { void t.offsetWidth; t.classList.remove('noanim'); }
-}
+let anim = {};   // 'role:i' → true while that token's hop animation is in flight
 
-function snapAll(s, instant = true) {
-  clearAnims();
-  for (const role of ['host', 'guest']) {
-    s.tokens[role].forEach((p, i) => placeToken(role, i, p, instant));
+/* place every token from state; tokens sharing a cell fan out instead of
+   stacking invisibly on top of each other */
+function applyPositions(s, instant = false) {
+  const pos = {};
+  const byCell = new Map();
+  for (const role of ['host', 'guest']) s.tokens[role].forEach((p, i) => {
+    const c = p === -1 ? YARD[role][i] : cellOf(role, p);
+    pos[role + ':' + i] = c;
+    const k = c[0] + ',' + c[1];
+    if (!byCell.has(k)) byCell.set(k, []);
+    byCell.get(k).push(role + ':' + i);
+  });
+  for (const [, keys] of byCell) {
+    keys.forEach((k, idx) => {
+      const [role, i] = k.split(':');
+      const [x, y] = pos[k];
+      const n = keys.length;
+      const dx = n > 1 ? (idx - (n - 1) / 2) * 0.32 : 0;   // fan out stacked tokens
+      const sc = n > 2 ? 0.7 : n > 1 ? 0.82 : 1;
+      const t = els.tokens[role][i];
+      if (instant) t.classList.add('noanim');
+      t.style.setProperty('--tx', ((x + 0.5 + dx) / 15 * 100) + '%');
+      t.style.setProperty('--ty', ((y + 0.5) / 15 * 100) + '%');
+      t.style.setProperty('--s', sc);
+      if (instant) { void t.offsetWidth; t.classList.remove('noanim'); }
+    });
   }
 }
 
+const snapAll = (s, instant = true) => { clearAnims(); anim = {}; applyPositions(s, instant); };
+
 /* step-by-step hop along the path for a token that just moved */
-function animateMove(role, i, fromP, toP) {
+function animateMove(role, i, fromP, toP, s) {
+  const key = role + ':' + i;
+  anim[key] = true;
   const t = els.tokens[role][i];
   const steps = [];
   if (fromP === -1) steps.push(0);
   else for (let p = fromP + 1; p <= toP; p++) steps.push(p);
   steps.forEach((p, k) => {
     animTimers.push(setTimeout(() => {
-      placeToken(role, i, p, false);
+      const [x, y] = cellOf(role, p);
+      t.style.setProperty('--tx', ((x + 0.5) / 15 * 100) + '%');
+      t.style.setProperty('--ty', ((y + 0.5) / 15 * 100) + '%');
       if (k < steps.length - 1) sfx.tick();
+      else { delete anim[key]; applyPositions(s, false); }  // settle with stack offsets
     }, k * 140));
   });
-  return steps.length * 140;
 }
 
 /* ---------------- gameplay ---------------- */
@@ -176,6 +195,23 @@ function rollDice() {
 /* ---------------- engine registration ---------------- */
 
 const finish = (s, winner) => ({ ...s, phase: 'over', winner });
+
+/* big center-popup dice — both players see every roll land */
+function showDicePopup(v) {
+  if (!els.pop) {
+    els.pop = h('div', { class: 'ldice-pop' }, h('div', { class: 'ldice-big' }));
+    document.body.append(els.pop);
+  }
+  const face = els.pop.firstChild;
+  els.pop.classList.add('show');
+  let n = 0;
+  const fl = setInterval(() => {
+    face.textContent = '⚀⚁⚂⚃⚄⚅'[Math.floor(Math.random() * 6)];
+    if (++n > 6) { clearInterval(fl); face.textContent = '⚀⚁⚂⚃⚄⚅'[v - 1]; }
+  }, 70);
+  clearTimeout(els.popT);
+  els.popT = setTimeout(() => els.pop.classList.remove('show'), 1250);
+}
 
 registerGame({
   id: 'ludo', name: 'Ludo Duel', tag: 'Race your four tokens home', icon: '🎲', section: 'classic',
@@ -267,30 +303,34 @@ registerGame({
     // diff tokens against the previous render → hop animation for what moved
     if (prevTokens) {
       clearAnims();
+      let needPlace = false;
       for (const role of ['host', 'guest']) {
         s.tokens[role].forEach((p, i) => {
+          const key = role + ':' + i;
           const old = prevTokens[role][i];
-          if (p === old) { placeToken(role, i, p, false); return; }
-          if (p === -1) {                                   // captured → sail home
-            placeToken(role, i, -1, false);
+          if (p === old) { if (!anim[key]) needPlace = true; return; }   // don't snap mid-hop
+          if (p === -1) {                                                // captured → sail home
+            delete anim[key];
             els.tokens[role][i].classList.add('captured');
             animTimers.push(setTimeout(() => els.tokens[role][i].classList.remove('captured'), 600));
             sfx.miss();
+            needPlace = true;
             return;
           }
-          const dur = animateMove(role, i, old, p) + 60;
-          animTimers.push(setTimeout(() => snapAll(s, false), dur));
+          animateMove(role, i, old, p, s);
         });
       }
+      if (needPlace) applyPositions(s, false);
     } else {
       snapAll(s);
     }
     prevTokens = { host: [...s.tokens.host], guest: [...s.tokens.guest] };
 
-    // dice flicker when a new value lands
+    // dice flicker when a new value lands → big popup on both screens
     if (s.dice !== lastDice) {
       clearInterval(diceTimer);
       if (s.dice != null) {
+        showDicePopup(s.dice);
         let n = 0;
         diceTimer = setInterval(() => {
           els.dice.textContent = '⚀⚁⚂⚃⚄⚅'[(n++ + Math.floor(Math.random() * 6)) % 6];
