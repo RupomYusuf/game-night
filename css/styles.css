@@ -664,7 +664,7 @@ img, video { max-width: 100%; display: block; }
 .hmblanks { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
 .hmblank { width: 34px; height: 46px; border-bottom: 3px solid var(--ink-faint); display: grid; place-items: center; font-size: 26px; font-weight: 800; text-transform: uppercase; }
 .hmblank.filled { border-color: var(--g1); color: var(--ink); animation: cardPop .35s var(--ease); }
-.hmkeys { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; width: min(92vw, 430px); }
+.hmkeys { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; width: min(100%, 430px); }
 .hmkey { aspect-ratio: 1; border-radius: 9px; border: 1.5px solid var(--glass-border); background: var(--glass-strong); color: var(--ink); font-weight: 800; font-size: 15px; }
 .hmkey:hover:not(:disabled) { border-color: var(--g1); }
 .hmkey:active:not(:disabled) { transform: scale(.92); }
@@ -682,3 +682,18 @@ img, video { max-width: 100%; display: block; }
 .hmsvg.saved .hmover-label { fill: #22c55e; }
 .hmsvg.lost .hmover-label { fill: #ff5f6d; }
 .hmover-label { font-weight: 900; font-size: 17px; }
+
+/* mobile: compact hub top bar (code + presence + settings must fit), fluid game elements */
+@media (max-width: 520px) {
+  .hub-head { flex-wrap: wrap; row-gap: 6px; padding: 6px 4px; }
+  .hub-head .code-chip { padding: 7px 11px; font-size: 12.5px; gap: 5px; }
+  .avatar { width: 33px; height: 33px; font-size: 16px; }
+  .presence { gap: 4px; }
+  .settings-row { gap: 4px; margin-left: auto; }
+  .settings-row .icon-btn { width: 34px; height: 34px; border-radius: 11px; }
+  .hmkeys { width: 100%; }
+  .bsgrid { width: min(37vw, 230px); }
+  .bswrap { gap: 8px; }
+  .game-bar h2 { font-size: 16px; }
+  .game-bar { padding: 4px 2px 10px; }
+}
