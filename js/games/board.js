@@ -20,7 +20,7 @@ registerGame({
       const nextStarter = s.round % 2 === 0 ? 'host' : 'guest';
       return { ...s, board: Array(9).fill(null), turn: nextStarter, winner: null, line: null, round: s.round + 1 };
     }
-    if (a.type !== 'move' || a.by !== s.turn || s.board[a.i]) return s;
+    if (a.type !== 'move' || a.by !== s.turn || a.i == null || a.i < 0 || a.i > 8 || s.board[a.i]) return s;
     const board = [...s.board];
     board[a.i] = a.by;
     const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
