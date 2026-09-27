@@ -31,11 +31,23 @@ export function openGame(id, variant = null) {
 }
 
 export function closeGame() {
+  const hadGame = !!(cur || G.activeGame);
   stopTicking();
   cur = null;
   G.activeGame = null;
   try { sessionStorage.removeItem('gn.game'); } catch { /* */ }
-  send('game-close', {});
+  if (hadGame) { send('game-close', {}); emit('game-closed', {}); }
+}
+
+/* Peer closed the game — tear down locally WITHOUT echoing 'game-close'
+   back, or the two tabs would ping-pong closes forever and instantly
+   kill every game opened afterwards. */
+export function onRemoteClose() {
+  if (!cur && !G.activeGame) return;
+  stopTicking();
+  cur = null;
+  G.activeGame = null;
+  try { sessionStorage.removeItem('gn.game'); } catch { /* */ }
   emit('game-closed', {});
 }
 
