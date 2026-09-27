@@ -2,7 +2,7 @@
    bottom sheet — the same DOM tree is re-parented between the two. */
 import { G, emit, on } from './state.js';
 import { send, sendLarge } from './net.js';
-import { h, qs, modal, toast, fmtTime } from './ui.js';
+import { h, qs, qsa, modal, toast, fmtTime } from './ui.js';
 import { sfx, haptic, buzz } from './sound.js';
 
 const QUICK = ['❤️', '😂', '🥰', '🔥', '😍', '😳', '🥂', '🌙'];
@@ -10,6 +10,16 @@ const root = h('div', { class: 'chat-pane' });
 let listEl, footEl, fab = null, sheetOpen = false, mode = 'sheet';
 let typingTimer = null, typingSent = false;
 let nearBottom = true, newPill = null;
+
+/* Back to the tab with the chat open: acknowledge whatever arrived while away. */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && G.chat.length && nearBottom
+        && (mode === 'desk' || sheetOpen) && G.peer.connected) {
+      send('seen', { ts: G.chat[G.chat.length - 1].ts });
+    }
+  });
+}
 
 export function chatRoot() { return root; }
 
@@ -74,7 +84,7 @@ function sendText(input, textOverride) {
   if (!text) return;
   if (input) { input.value = ''; input.style.height = 'auto'; }
   typingOff();
-  const msg = { id: crypto.randomUUID(), kind: 'text', text, ts: Date.now() };
+  const msg = { id: crypto.randomUUID(), kind: 'text', text, ts: Date.now(), from: G.me.role };
   pushLocal(msg);
   send('chat', { ...msg });
   sfx.send(); haptic(buzz.tap);
@@ -92,7 +102,9 @@ function pushLocal(msg) {
 export function onIncomingChat(m) {
   const entry = {
     id: m.id, from: m.from, mine: false, kind: m.kind, text: m.text,
-    dataURL: m.data || null, expired: !!m.expired, mime: m.mime, ts: m.ts,
+    // P2P chunk reassembly delivers the photo as `dataURL`; the join-sync
+    // history payload (host → joiner) delivers it as `data`. Accept both.
+    dataURL: m.dataURL ?? m.data ?? null, expired: !!m.expired, mime: m.mime, ts: m.ts,
     status: 'seen', reactions: m.reactions || {},
   };
   G.chat.push(entry);
@@ -323,7 +335,8 @@ function openAttachMenu(anchor) {
   const existing = qs('.attach-menu');
   if (existing) { existing.remove(); return; }
   const menu = h('div', { class: 'attach-menu glass' },
-    h('button', { onclick: () => { menu.remove(); pickPhoto(); } }, '📷  Photo — take or upload'),
+    h('button', { onclick: () => { menu.remove(); takePhoto(); } }, '📸  Camera — take a photo now'),
+    h('button', { onclick: () => { menu.remove(); pickPhoto(); } }, '🖼️  Photo — upload from device'),
     h('button', { onclick: () => { menu.remove(); recordVideo(); } }, '🎥  Video — record up to 60s'),
     h('button', { onclick: () => { menu.remove(); uploadVideo(); } }, '📁  Video — upload a clip'),
   );
@@ -362,8 +375,109 @@ function pickPhoto() {
   });
 }
 
+/* ---- live photo capture (all devices, front & back) ---- */
+
+function openCamera(facing) {
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: facing, width: { ideal: 1500 }, height: { ideal: 1500 } },
+    audio: false,
+  });
+}
+
+function takePhoto() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    toast('Camera needs HTTPS or localhost — try uploading a photo instead.');
+    return;
+  }
+  openCamera('user')
+    .then((stream) => photoModal(stream))
+    .catch(() => toast('Camera unavailable — check permission, or upload a photo.'));
+}
+
+function photoModal(stream) {
+  let current = stream;
+  let shot = null;
+  let facing = 'user';
+  try {
+    const f = stream.getVideoTracks()[0]?.getSettings?.().facingMode;
+    if (f === 'environment' || f === 'user') facing = f;
+  } catch { /* */ }
+
+  const stopCurrent = () => {
+    if (!current) return;
+    try { current.getTracks().forEach((t) => t.stop()); } catch { /* */ }
+    current = null;
+  };
+
+  const m = modal((box, close) => {
+    const stage = h('div', { style: 'display:grid; place-items:center; min-height:120px' });
+    const status = h('div', { class: 'g-sub' });
+    const row = h('div', { class: 'g-row' });
+    box.append(h('h3', {}, '📸 Take a photo'), stage, status, row);
+
+    function showLive() {
+      shot = null;
+      status.textContent = 'Frame it, then tap the shutter 💫';
+      const video = h('video', { class: 'preview-video', autoplay: true, muted: true, playsinline: true, srcObject: current });
+      video.style.transform = facing === 'environment' ? '' : 'scaleX(-1)';
+      stage.replaceChildren(video);
+      row.replaceChildren(
+        h('button', { class: 'btn btn-ghost btn-sm', onclick: () => { stopCurrent(); close(); } }, 'Cancel'),
+        h('button', { class: 'btn btn-ghost btn-sm', onclick: flip }, '🔄 Flip'),
+        h('button', { class: 'btn btn-hot btn-sm', onclick: shutter }, '⚪ Snap'),
+      );
+    }
+
+    async function flip() {
+      facing = facing === 'user' ? 'environment' : 'user';
+      if (current) { try { current.getTracks().forEach((t) => t.stop()); } catch { /* */ } }
+      try {
+        current = await openCamera(facing);
+        const v = stage.querySelector('video');
+        if (v) { v.srcObject = current; v.style.transform = facing === 'environment' ? '' : 'scaleX(-1)'; }
+      } catch { toast('Could not switch camera.'); }
+    }
+
+    function shutter() {
+      const video = stage.querySelector('video');
+      if (!video || !video.videoWidth) { toast('Camera is still warming up — one sec.'); return; }
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth; c.height = video.videoHeight;
+      c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+      shot = c.toDataURL('image/jpeg', .9);
+      stopCurrent();
+      showShot();
+    }
+
+    function showShot() {
+      status.textContent = 'Look good? Send it 💞';
+      stage.replaceChildren(h('img', { class: 'preview-video', src: shot, alt: 'Your photo' }));
+      row.replaceChildren(
+        h('button', { class: 'btn btn-ghost btn-sm', onclick: retake }, '↺ Retake'),
+        h('button', { class: 'btn btn-ghost btn-sm', onclick: () => { stopCurrent(); close(); } }, 'Discard'),
+        h('button', {
+          class: 'btn btn-primary btn-sm',
+          onclick: () => { const url = shot; stopCurrent(); close(); if (url) sendMedia(url, 'image/jpeg'); },
+        }, 'Send 💞'),
+      );
+    }
+
+    async function retake() {
+      status.textContent = 'Opening camera…';
+      try { current = await openCamera(facing); showLive(); }
+      catch { toast('Camera unavailable — check permissions.'); }
+    }
+
+    showLive();
+  });
+
+  // backdrop tap must also release the camera
+  const orig = m.close;
+  m.close = () => { stopCurrent(); orig(); };
+}
+
 function sendMedia(dataURL, mime) {
-  const msg = { id: crypto.randomUUID(), kind: 'media', mime, dataURL, ts: Date.now() };
+  const msg = { id: crypto.randomUUID(), kind: 'media', mime, dataURL, ts: Date.now(), from: G.me.role };
   pushLocal(msg);
   sfx.send(); haptic(buzz.tap);
   const mark = qs(`[data-sending="${msg.id}"]`);
@@ -386,7 +500,7 @@ function recordVideo() {
 }
 
 function recordingModal(stream) {
-  modal((box, close) => {
+  const m = modal((box, close) => {
     let recorder = null, chunks = [], t0 = 0, timerInt = null, closed = false;
     const video = h('video', { class: 'preview-video', autoplay: true, muted: true, playsinline: true, srcObject: stream });
     const status = h('div', { class: 'g-sub' }, 'Ready when you are 💞');
@@ -443,6 +557,12 @@ function recordingModal(stream) {
 
     box.append(h('h3', {}, '🎥 Record a moment'), video, status, sendWrap);
   });
+  // backdrop tap must also release the camera + mic
+  const orig = m.close;
+  m.close = () => {
+    try { stream.getTracks().forEach((t) => t.stop()); } catch { /* */ }
+    orig();
+  };
 }
 
 function uploadVideo() {
@@ -469,7 +589,36 @@ function blobToDataURL(blob) {
 }
 
 function lightbox(src, mime) {
-  const ov = h('div', { class: 'lightbox' }, (mime || '').startsWith('video/') ? h('video', { src, controls: true, autoplay: true }) : h('img', { src }));
+  const isVideo = (mime || '').startsWith('video/');
+  const saveBtn = h('button', {
+    class: 'btn btn-primary btn-sm lightbox-save',
+    onclick: (e) => { e.stopPropagation(); saveToGallery(src, mime); },
+  }, '⬇️ Save to gallery');
+  const ov = h('div', { class: 'lightbox' },
+    isVideo ? h('video', { src, controls: true, autoplay: true }) : h('img', { src }),
+    saveBtn);
   ov.addEventListener('click', () => ov.remove());
   document.body.append(ov);
+}
+
+/* Save straight to the phone's gallery via the share sheet (iOS "Save Image",
+   Android "Save to Photos"); falls back to a normal download elsewhere. */
+async function saveToGallery(dataURL, mime) {
+  const subtype = String(mime || 'image/jpeg').split('/')[1]?.split(';')[0] || 'jpg';
+  const ext = subtype === 'jpeg' ? 'jpg' : subtype;
+  const name = `game-night-${Date.now()}.${ext}`;
+  try {
+    const blob = await (await fetch(dataURL)).blob();
+    const file = new File([blob], name, { type: blob.type || mime || 'image/jpeg' });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Game Night' });
+      return;
+    }
+    const a = h('a', { href: dataURL, download: name });
+    document.body.append(a); a.click(); a.remove();
+    toast('Saved ✨ check your downloads / gallery');
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // user dismissed the share sheet
+    toast('Could not save that media.');
+  }
 }
