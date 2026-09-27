@@ -3,6 +3,7 @@
 import '../games/board.js';
 import '../games/tetris.js';
 import '../games/wordrush.js';
+import '../games/hangman.js';    // Hangman Duel
 import '../games/twentyq.js';
 import '../games/draw.js';
 import '../games/uno.js';        // UNO Duel
@@ -19,7 +20,7 @@ import '../games/truthdare.js';
 
 import { allGames } from './engine.js';
 
-export const CLASSIC_GAMES = ['tictactoe', 'connect4', 'memory', 'chess', 'battleship', 'rps', 'tetris', 'uno', 'ludo', 'wordrush', 'draw', 'twentyq', 'thisorthat', 'nhie'];
+export const CLASSIC_GAMES = ['tictactoe', 'connect4', 'memory', 'chess', 'battleship', 'rps', 'tetris', 'uno', 'ludo', 'hangman', 'wordrush', 'draw', 'twentyq', 'thisorthat', 'nhie'];
 export const ADULT_GAMES = ['dareroulette', 'stripshowdown', 'fantasy', 'nhie18', 'truthdare', 'wyr', 'heatcheck'];
 
 export function gameMeta(id) { return allGames().find((g) => g.id === id); }
