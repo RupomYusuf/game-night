@@ -6,6 +6,8 @@
 import { registerGame, hostNow, active, act } from './engine.js';
 import { h } from '../ui.js';
 import { sfx, haptic, buzz } from '../sound.js';
+import { send } from '../net.js';
+import { on } from '../state.js';
 
 const ROUND_MS = 180_000, COUNTDOWN_MS = 3200;
 const COLS = 10, ROWS = 20, CELL = 20;
@@ -64,6 +66,7 @@ function startLocal(s) {
   me = { grid, cur: null, next: [], hold: 0, canHold: true, score: 0, lines: 0, level: 1, over: false, seqIdx: 0, acc: 0, last: 0 };
   localSeed = s.seed;
   bagCache = { n: -1, pieces: [] };
+  peerLive = { round: -1, cur: null, grid: '', over: false };
   finalsDrawn = false;
   spawn();
   startLoop();
@@ -90,7 +93,7 @@ const canMove = (dx, dy) => me.cur && !collides(me.cur.t, me.cur.rot, me.cur.x +
 
 function move(dx) {
   if (!playable()) return;
-  if (canMove(dx, 0)) me.cur.x += dx;
+  if (canMove(dx, 0)) { me.cur.x += dx; sendLive(); }
 }
 
 function rotate(dir) {
@@ -99,6 +102,7 @@ function rotate(dir) {
   for (const [kx, ky] of [[0, 0], [-1, 0], [1, 0], [-2, 0], [2, 0], [0, -1]]) {
     if (!collides(me.cur.t, rot, me.cur.x + kx, me.cur.y + ky)) {
       me.cur.rot = rot; me.cur.x += kx; me.cur.y += ky;
+      sendLive();
       return;
     }
   }
@@ -106,7 +110,7 @@ function rotate(dir) {
 
 function softDrop() {
   if (!playable()) return;
-  if (canMove(0, 1)) { me.cur.y++; me.score++; }
+  if (canMove(0, 1)) { me.cur.y++; me.score++; sendLive(); }
   else lockNow();
 }
 
@@ -127,6 +131,7 @@ function holdPiece() {
   me.next = [0, 1, 2].map((j) => seqPiece(me.seqIdx + j));
   me.hold = t;
   me.canHold = false;
+  sendLive();
   if (collides(me.cur.t, 0, me.cur.x, me.cur.y)) topOut();
 }
 
@@ -165,6 +170,7 @@ function lockNow() {
   me.canHold = true;
   spawn();
   sendProgress();
+  sendLive(true);
 }
 
 function topOut() {
@@ -173,6 +179,7 @@ function topOut() {
   me.cur = null;
   sfx.miss(); haptic(buzz.recv);
   sendProgress(true);
+  sendLive(true);
 }
 
 /* my score/grid → shared state, so the partner board stays live */
@@ -202,6 +209,34 @@ const strGrid = (str, out) => {
   }
   return out;
 };
+
+/* live view of the partner's board — the falling piece and fresh grid ride a
+   light side-channel (not the game engine) so moves stream in real time
+   without flooding the shared state. Locks still sync through the engine. */
+let peerLive = { round: -1, cur: null, grid: '', over: false };
+let lastLive = 0, liveTimer = 0;
+
+function sendLive(force) {
+  const go = () => {
+    if (!me) return;
+    const cur = active();
+    if (!cur || cur.id !== 'tetris') return;
+    lastLive = Date.now();
+    send('tetris-live', {
+      round: cur.state.round ?? 0,
+      cur: me.cur ? { t: me.cur.t, rot: me.cur.rot, x: me.cur.x, y: me.cur.y } : null,
+      grid: gridStr(me.grid),
+      over: me.over,
+    });
+  };
+  clearTimeout(liveTimer);
+  if (force || Date.now() - lastLive > 40) go();
+  else liveTimer = setTimeout(go, 45);
+}
+
+if (typeof window !== 'undefined') {
+  on('tetris-live', (p) => { if (p && typeof p.round === 'number') peerLive = p; });
+}
 
 /* ---------------- rendering (persistent canvases survive re-renders) ---------------- */
 
@@ -259,13 +294,22 @@ function drawPeerBoard(s) {
   const ctx = els.peer.getContext('2d');
   ctx.fillStyle = '#0b0b16'; ctx.fillRect(0, 0, els.peer.width, els.peer.height);
   const theirs = s[myRole === 'host' ? 'guest' : 'host'];
-  if (theirs?.grid) {
-    const g = strGrid(theirs.grid, Array.from({ length: ROWS }, () => Array(COLS).fill(0)));
+  // prefer the live side-channel when it belongs to the current round —
+  // it carries the falling piece and the freshest grid
+  const live = peerLive && peerLive.round === s.round ? peerLive : null;
+  const grid = live ? live.grid : theirs?.grid;
+  if (grid) {
+    const g = strGrid(grid, Array.from({ length: ROWS }, () => Array(COLS).fill(0)));
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       if (g[r][c]) cellRect(ctx, c, r, COLORS[g[r][c]]);
     }
   }
-  if (theirs?.over) {
+  if (live?.cur) {
+    for (const [cx, cy] of PIECES[live.cur.t][live.cur.rot]) {
+      if (live.cur.y + cy >= 0) cellRect(ctx, live.cur.x + cx, live.cur.y + cy, COLORS[live.cur.t]);
+    }
+  }
+  if (live ? live.over : theirs?.over) {
     ctx.fillStyle = 'rgba(5,5,12,.72)'; ctx.fillRect(0, 0, els.peer.width, els.peer.height);
     ctx.fillStyle = '#ff8aa0'; ctx.font = '800 15px Outfit, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('TOPPED OUT', els.peer.width / 2, els.peer.height / 2);
@@ -316,11 +360,11 @@ function startLoop() {
       const iv = speed(me.level);
       while (me.acc > iv && !me.over) {
         me.acc -= iv;
-        if (canMove(0, 1)) me.cur.y++;
+        if (canMove(0, 1)) { me.cur.y++; sendLive(); }
         else lockNow();
       }
     } else if (me) me.last = 0;
-    drawMine(); drawSide();
+    drawMine(); drawSide(); drawPeerBoard(s);
     els.infoMine.textContent = me ? `Score ${me.score} · Lines ${me.lines} · Lv ${me.level}` : '';
     const rem = Math.max(0, s.endsAt - hostNow());
     els.timer.textContent = `${Math.floor(rem / 60000)}:${String(Math.floor((rem % 60000) / 1000)).padStart(2, '0')}`;
