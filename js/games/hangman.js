@@ -13,6 +13,14 @@ const MAX_WRONG = 6;
 const TARGET = 3;
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
+/* SVG-namespace element builder — h() creates HTML nodes, which don't render as vector art */
+function svgTag(tag, attrs = {}, ...kids) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  kids.flat(9).forEach((kid) => { if (kid !== null && kid !== undefined && kid !== false) el.append(kid); });
+  return el;
+}
+
 /* positions where `letter` occurs in `word` (case-insensitive) — pure */
 function computePositions(word, letter) {
   const w = String(word || '').toUpperCase();
@@ -121,7 +129,7 @@ registerGame({
       const iWon = s.roundOver.winner === myRole;
       el.append(h('div', { class: 'g-center', style: 'gap:10px' },
         scoreRow,
-        h('div', { style: 'font-size:46px' }, iWon ? '🎉' : '💀'),
+        hangmanSvg(MAX_WRONG, true, !iWon),   // the completed stickman hangs and swings
         h('div', { class: 'g-prompt' }, iWon ? 'You won the round!' : 'You lost this round…'),
         h('div', { class: 'g-sub' }, `The word was “${s.roundOver.word.toUpperCase()}”`),
         h('div', { class: 'g-sub' + (s.score[myRole] === TARGET - 1 ? ' turn-glow' : '') },
@@ -131,8 +139,14 @@ registerGame({
       return;
     }
 
+    /* the master's word survives their own page refresh (session-only) */
+    if (iAmMaster && s.wordLen > 0 && myWord == null) {
+      myWord = sessionStorage.getItem('hm-word-' + s.round) || '';
+    }
+
     /* word master picks the secret word */
     if (iAmMaster && s.wordLen === 0) {
+      myWord = null; resolvedKey = null;
       el.append(h('div', { class: 'g-center', style: 'gap:12px' },
         scoreRow,
         h('div', { style: 'font-size:46px' }, '🤫'),
@@ -147,6 +161,7 @@ registerGame({
             const hint = (el.querySelector('#hm-hint')?.value || '').trim();
             if (!/^[A-Z]{2,14}$/.test(w)) { sfx.miss(); return; }
             myWord = w;
+            sessionStorage.setItem('hm-word-' + s.round, w);
             sfx.send(); haptic(buzz.tap);
             act({ type: 'wordSet', len: w.length, hint });
           },
@@ -166,10 +181,15 @@ registerGame({
       if (s.pendingLetter) {
         const positions = computePositions(myWord, s.pendingLetter);
         const totalCovered = covered + positions.length;
+        const newWrong = positions.length ? s.wrongCount : s.wrongCount + 1;
         if (totalCovered >= s.wordLen) {
           resolvedKey = s.round + ':' + s.pendingLetter;
           act({ type: 'roundEnd', winner: 'guesser', word: myWord });
           sfx.win(); haptic(buzz.win);
+        } else if (newWrong >= MAX_WRONG) {
+          resolvedKey = s.round + ':' + s.pendingLetter;
+          act({ type: 'roundEnd', winner: 'master', word: myWord });   // sixth mistake → the stickman hangs
+          sfx.miss(); haptic(buzz.recv);
         } else {
           resolvedKey = s.round + ':' + s.pendingLetter;
           act({ type: 'result', letter: s.pendingLetter, positions });
@@ -246,19 +266,28 @@ registerGame({
 });
 
 /* progressive stickman — every wrong letter draws one more part */
-function hangmanSvg(wrongCount) {
-  const part = (tag, attrs, nn) => h(tag, { ...attrs, class: 'hpart p' + nn + (wrongCount >= nn ? ' drawn' : '') });
-  return h('svg', { class: 'hmsvg', viewBox: '0 0 200 200' },
-    h('line', { x1: '30', y1: '180', x2: '110', y2: '180', class: 'hframe' }),
-    h('line', { x1: '50', y1: '180', x2: '50', y2: '30', class: 'hframe' }),
-    h('line', { x1: '50', y1: '30', x2: '100', y2: '30', class: 'hframe' }),
-    h('line', { x1: '100', y1: '30', x2: '100', y2: '46', class: 'hframe rope' }),
+/* the stickman builder — SVG-namespace elements (h() creates HTML nodes, which don't render as vector art).
+   over=true shows the completed figure hanging from the rope and swinging. */
+function hangmanSvg(wrongCount, over = false, lost = false) {
+  const part = (tag, attrs, nn) => {
+    const drawn = over || wrongCount >= nn;
+    const fresh = !over && wrongCount === nn;   // the newest part gets the attach bounce
+    return svgTag(tag, { ...attrs, class: 'hpart p' + nn + (drawn ? ' drawn' : '') + (fresh ? ' new' : '') });
+  };
+  const parts = [
     part('circle', { cx: '100', cy: '64', r: '17' }, 1),
     part('line', { x1: '100', y1: '81', x2: '100', y2: '135' }, 2),
     part('line', { x1: '100', y1: '95', x2: '76', y2: '115' }, 3),
     part('line', { x1: '100', y1: '95', x2: '124', y2: '115' }, 4),
     part('line', { x1: '100', y1: '135', x2: '78', y2: '168' }, 5),
     part('line', { x1: '100', y1: '135', x2: '122', y2: '168' }, 6),
-    wrongCount >= MAX_WRONG ? h('text', { x: '100', y: '192', 'text-anchor': 'middle', class: 'hmdead' }, 'GAME OVER') : null,
+  ];
+  return svgTag('svg', { class: 'hmsvg' + (over ? (lost ? ' lost hswing' : ' saved hswing') : ''), viewBox: '0 0 200 200' },
+    svgTag('line', { x1: '30', y1: '180', x2: '110', y2: '180', class: 'hframe' }),
+    svgTag('line', { x1: '50', y1: '180', x2: '50', y2: '30', class: 'hframe' }),
+    svgTag('line', { x1: '50', y1: '30', x2: '100', y2: '30', class: 'hframe' }),
+    svgTag('line', { x1: '100', y1: '30', x2: '100', y2: '46', class: 'hframe rope' }),
+    svgTag('g', { class: 'hfigure' }, ...parts),
+    over ? svgTag('text', { x: '100', y: '192', 'text-anchor': 'middle', class: 'hmover-label' }, lost ? 'GAME OVER' : 'SAVED!') : null,
   );
 }

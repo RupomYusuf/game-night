@@ -671,3 +671,14 @@ img, video { max-width: 100%; display: block; }
 .hmkey.good { background: rgba(74, 222, 128, .18); border-color: #4ade80; color: #4ade80; }
 .hmkey.bad { background: rgba(255, 95, 109, .12); border-color: rgba(255, 95, 109, .5); color: #ff8aa0; text-decoration: line-through; }
 .hmkey:disabled { cursor: default; opacity: .75; }
+
+/* hangman: part attach + hanging swing */
+.hfigure { transform-box: view-box; transform-origin: 100px 46px; }
+.hmsvg.hswing .hfigure { animation: hmSwing 2.2s ease-in-out infinite; transform-origin: 100px 46px; }
+@keyframes hmSwing { 0%, 100% { transform: rotate(10deg); } 50% { transform: rotate(-10deg); } }
+.hpart.drawn.new { animation: hmDraw .55s var(--ease) backwards, hmAttach .5s var(--ease) .5s; }
+@keyframes hmAttach { 0% { transform: translateY(-8px) rotate(-4deg); } 55% { transform: translateY(3px) rotate(3deg); } 100% { transform: translateY(0) rotate(0); } }
+.hmsvg.saved .hpart, .hmsvg.saved .hframe { stroke: #22c55e; }
+.hmsvg.saved .hmover-label { fill: #22c55e; }
+.hmsvg.lost .hmover-label { fill: #ff5f6d; }
+.hmover-label { font-weight: 900; font-size: 17px; }

@@ -145,15 +145,19 @@ function broadcast() {
 
 /* ---- render + scorecard + celebrations ---- */
 
+let rendering = false, renderQueued = false;
 function render() {
   if (!cur) return;
+  if (rendering) { renderQueued = true; return; }   // a view called act() mid-render — run once more after it finishes
+  rendering = true;
   const stage = document.getElementById('game-stage');
-  if (!stage) return;
+  if (!stage) { rendering = false; return; }
   cur.root = stage;
   const { mod, state, ctx } = cur;
   const prevWinner = cur.lastWinner;
   stage.innerHTML = '';
   mod.view(stage, state, ctx, api());
+  rendering = false;
   // scorecard extraction for the lobby menu
   if (mod.score && isHost()) {
     const sc = mod.score(state);
@@ -171,6 +175,10 @@ function render() {
     else if (winner === ctx.myRole) { confettiBurst(); sfx.win(); haptic(buzz.win); }
     else { sfx.lose(); }
   } else if (!winner) cur.lastWinner = null;
+  if (renderQueued) {
+    renderQueued = false;
+    render();
+  }
 }
 
 export function api() {
