@@ -564,7 +564,7 @@ img, video { max-width: 100%; display: block; }
 .lcell.center { background: #10101c; border: none; }
 .lcell.goal { background: linear-gradient(135deg, #ff5fa2 50%, #4f9dff 50%) !important; }
 .lyard { grid-column: calc(var(--x) + 1) / span 6; grid-row: calc(var(--y) + 1) / span 6; border: 3px solid rgba(255,255,255,.25); border-radius: 10px; margin: 4%; }
-.ltoken { position: absolute; width: 5.4%; height: 5.4%; border-radius: 50% 50% 45% 45%; transform: translate(-50%, -70%); border: 2px solid rgba(255,255,255,.9); box-shadow: 0 3px 6px rgba(0,0,0,.5); transition: left .14s var(--ease), top .14s var(--ease); z-index: 2; pointer-events: none; }
+.ltoken { position: absolute; left: var(--tx, 50%); top: var(--ty, 50%); width: 5.6%; height: 5.6%; border-radius: 50% 50% 45% 45%; transform: translate(-50%, -70%) scale(var(--s, 1)); border: 2px solid rgba(255,255,255,.9); box-shadow: 0 3px 6px rgba(0,0,0,.5); transition: left .14s var(--ease), top .14s var(--ease), transform .14s var(--ease); z-index: 2; pointer-events: none; }
 .ltoken.host { background: radial-gradient(circle at 35% 30%, #ffa5c8, #ff5fa2); }
 .ltoken.guest { background: radial-gradient(circle at 35% 30%, #a5cdff, #4f9dff); }
 .ltoken.movable { pointer-events: auto; cursor: pointer; animation: tokenPulse .9s infinite; z-index: 3; }
@@ -572,3 +572,10 @@ img, video { max-width: 100%; display: block; }
 .ltoken.captured { transition: left .5s var(--ease), top .5s var(--ease); }
 .ltoken.noanim { transition: none !important; }
 .lstatus { min-height: 40px; display: flex; align-items: center; justify-content: center; }
+
+/* ludo dice popup */
+.ldice-pop { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(8,8,18,.45), rgba(8,8,18,.88)); opacity: 0; pointer-events: none; transition: opacity .3s var(--ease); z-index: 95; }
+.ldice-pop.show { opacity: 1; }
+.ldice-big { font-size: clamp(120px, 34vw, 190px); line-height: 1; color: #fff; text-shadow: 0 14px 60px rgba(0,0,0,.65); animation: diceBig .55s var(--ease); }
+.ldice-pop.show .ldice-big { animation: diceBig .55s var(--ease), diceShake .5s linear 3; }
+@keyframes diceBig { 0% { transform: scale(.25) rotate(-40deg); opacity: 0; } 60% { transform: scale(1.18) rotate(8deg); opacity: 1; } 100% { transform: scale(1) rotate(0); } }
