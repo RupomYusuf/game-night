@@ -2,7 +2,7 @@
    shots sync through the engine and the DEFENDER resolves each shot privately
    (hit / miss / sunk) and reports it — same trust model as UNO's hidden hands.
    Classic rules: sink all seventeen ship cells to win; a hit grants another shot. */
-import { registerGame, act } from './engine.js';
+import { registerGame, act, rerender } from './engine.js';
 import { h } from '../ui.js';
 import { sfx, haptic, buzz } from '../sound.js';
 
@@ -58,11 +58,11 @@ const gridEl = (cls) => h('div', { class: 'bsgrid ' + cls },
 
 registerGame({
   id: 'battleship', name: 'Battleship', tag: 'Hide your fleet, hunt theirs', icon: '🚢', section: 'classic',
-  init() { return { phase: 'lobby', round: 1, ready: { host: false, guest: false }, turn: 'host', shots: { host: [], guest: [] }, pendingShot: null, winner: null }; },
+  init() { return { phase: 'lobby', round: 1, ready: { host: false, guest: false }, turn: 'host', shots: { host: [], guest: [] }, pendingShot: null, pendingAt: null, winner: null }; },
   canOptimistic(a) { return a.type !== 'start'; },
   reduce(s, a) {
     if ((a.type === 'start' && s.phase === 'lobby') || (a.type === 'rematch' && s.phase === 'over')) {
-      return { ...s, phase: 'place', round: s.round + 1, ready: { host: false, guest: false }, turn: 'host', shots: { host: [], guest: [] }, pendingShot: null, winner: null };
+      return { ...s, phase: 'place', round: s.round + 1, ready: { host: false, guest: false }, turn: 'host', shots: { host: [], guest: [] }, pendingShot: null, pendingAt: null, winner: null };
     }
     if (s.phase === 'place') {
       if (a.type !== 'fleetReady') return s;
@@ -74,19 +74,29 @@ registerGame({
       if (a.by !== s.turn || s.pendingShot) return s;
       if (typeof a.idx !== 'number' || a.idx < 0 || a.idx > 99) return s;
       if (s.shots[a.by].some((sh) => sh.idx === a.idx)) return s;   // already fired there
-      return { ...s, pendingShot: { idx: a.idx, by: a.by } };
+      return { ...s, pendingShot: { idx: a.idx, by: a.by }, pendingAt: Date.now() };
     }
     if (a.type === 'result') {
       // only the defender of the shot may resolve it, and only for the pending shot
       if (!s.pendingShot || a.by === s.pendingShot.by || a.idx !== s.pendingShot.idx) return s;
       const shooter = s.pendingShot.by;
       if (s.shots[shooter].some((sh) => sh.idx === a.idx)) return { ...s, pendingShot: null };
-      const shots = { ...s.shots, [shooter]: [...s.shots[shooter], { idx: a.idx, hit: !!a.hit, sunk: a.sunk || null }] };
+      const shots = { ...s.shots, [shooter]: [...s.shots[shooter], { idx: a.idx, hit: !!a.hit, sunk: a.sunk || null, sunkCells: Array.isArray(a.sunkCells) ? a.sunkCells.slice(0, 5) : null }] };
       const destroyed = a.done || shots[shooter].filter((sh) => sh.hit).length >= TOTAL_CELLS;
-      if (destroyed) return { ...s, shots, pendingShot: null, phase: 'over', winner: shooter };
-      return { ...s, shots, pendingShot: null, turn: a.hit ? shooter : a.by };   // hit → shoot again
+      if (destroyed) return { ...s, shots, pendingShot: null, pendingAt: null, phase: 'over', winner: shooter };
+      return { ...s, shots, pendingShot: null, pendingAt: null, turn: a.hit ? shooter : a.by };   // hit → shoot again
     }
     return s;
+  },
+  tick(s, { now }) {
+    // a shot that was never resolved (partner's tab froze mid-answer) expires as
+    // a miss, so the turn always keeps switching — no permanent stalls
+    if (s.phase === 'play' && s.pendingShot && s.pendingAt && now - s.pendingAt > 6000) {
+      const shooter = s.pendingShot.by;
+      const other = shooter === 'host' ? 'guest' : 'host';
+      return { ...s, shots: { ...s.shots, [shooter]: [...s.shots[shooter], { idx: s.pendingShot.idx, hit: false, sunk: null, sunkCells: null }] }, pendingShot: null, pendingAt: null, turn: other };
+    }
+    return null;
   },
   view(el, s, ctx, api) {
     const myRole = ctx.myRole;
@@ -113,9 +123,9 @@ registerGame({
       return;
     }
 
-    /* ---- placement (my fleet, my screen) ---- */
+    /* ---- placement (my fleet, my screen): start empty, tap to place each ship ---- */
     if (s.phase === 'place') {
-      if (!myFleet) { const rf = randomFleet(); myFleet = rf.fleet; myBoard = rf.board; placing = { horiz: true }; }
+      if (!myFleet || !myBoard) { myBoard = Array(100).fill(0); myFleet = []; placing = { horiz: true }; }
       const nextIdx = myFleet.length;
       const placedAll = nextIdx >= FLEET.length;
       const grid = gridEl('place');
@@ -132,7 +142,8 @@ registerGame({
         if (!canPlace(myBoard, cells)) { sfx.miss(); return; }
         cells.forEach((c) => { myBoard[c] = 1; });
         myFleet.push({ id: ship.id, cells });
-        sfx.pop();
+        sfx.pop(); haptic(buzz.tap);
+        rerender();                                    // repaint with the freshly dropped ship
       });
 
       el.append(h('div', { class: 'g-center', style: 'gap:10px' },
@@ -145,12 +156,24 @@ registerGame({
         h('div', { class: 'urow' },
           !placedAll ? h('button', {
             class: 'btn btn-ghost btn-sm',
-            onclick: () => { placing.horiz = !placing.horiz; sfx.tap(); },
+            onclick: () => { placing.horiz = !placing.horiz; sfx.tap(); rerender(); },
           }, placing.horiz ? '↔ Horizontal' : '↕ Vertical') : null,
+          myFleet.length ? h('button', {
+            class: 'btn btn-ghost btn-sm',
+            onclick: () => {
+              const last = myFleet.pop();
+              last.cells.forEach((c) => { myBoard[c] = 0; });
+              sfx.tap(); rerender();
+            },
+          }, '↩ Undo') : null,
           h('button', {
             class: 'btn btn-ghost btn-sm',
-            onclick: () => { const rf = randomFleet(); myFleet = rf.fleet; myBoard = rf.board; sfx.tap(); },
-          }, '🎲 Shuffle all'),
+            onclick: () => { myBoard = Array(100).fill(0); myFleet = []; sfx.tap(); rerender(); },
+          }, '🧹 Clear'),
+          h('button', {
+            class: 'btn btn-ghost btn-sm',
+            onclick: () => { const rf = randomFleet(); myFleet = rf.fleet; myBoard = rf.board; sfx.tap(); rerender(); },
+          }, '🎲 Auto-place all'),
           placedAll && !s.ready[myRole] ? h('button', { class: 'btn btn-hot', onclick: () => act({ type: 'fleetReady' }) }, 'Fleet ready ⚓') : null,
         ),
       ));
@@ -168,18 +191,28 @@ registerGame({
       const idx = s.pendingShot.idx;
       const hit = !!myBoard[idx];
       const sunk = hit ? sunkShipName(idx) : null;
+      const sunkCells = sunk ? myFleet.find((f) => f.cells.includes(idx)).cells : null;
       if (hit) lastSeen.shotsAgainst.add(idx);
       const done = hit && allMyShipsSunk();
-      act({ type: 'result', idx, hit, sunk, done });
+      act({ type: 'result', idx, hit, sunk, sunkCells, done });
       if (hit) { sfx.miss(); haptic(buzz.recv); } else sfx.tap();
     }
 
+    // fully-hit ships are SUNK → paint them green instead of red, on both boards
+    const mySunkCells = new Set();
+    for (const ship of myFleet || []) {
+      if (ship.cells.every((c) => lastSeen.shotsAgainst.has(c))) ship.cells.forEach((c) => mySunkCells.add(c));
+    }
+    const theirSunkCells = new Set();
+    myShots.forEach((sh) => (sh.sunkCells || []).forEach((c) => theirSunkCells.add(c)));
+
     const myGrid = gridEl('mine');
     myFleet?.forEach((ship) => ship.cells.forEach((c) => myGrid.children[c].classList.add('ship')));
-    theirShots.forEach((sh) => myGrid.children[sh.idx].classList.add(sh.hit ? 'hit' : 'miss'));
+    theirShots.forEach((sh) => myGrid.children[sh.idx].classList.add(mySunkCells.has(sh.idx) ? 'sunk' : (sh.hit ? 'hit' : 'miss')));
 
     const theirGrid = gridEl('theirs');
-    myShots.forEach((sh) => theirGrid.children[sh.idx].classList.add(sh.hit ? 'hit' : 'miss'));
+    myShots.forEach((sh) => theirGrid.children[sh.idx].classList.add(theirSunkCells.has(sh.idx) ? 'sunk' : (sh.hit ? 'hit' : 'miss')));
+    theirSunkCells.forEach((c) => theirGrid.children[c].classList.add('sunk'));
 
     const myTurn = s.turn === myRole && !s.pendingShot;
     if (myTurn) theirGrid.addEventListener('click', (e) => {
