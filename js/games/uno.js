@@ -164,11 +164,14 @@ registerGame({
 
     if (a.type === 'drew') {
       const n = Math.max(1, Math.min(4, a.n | 0));
+      // a reshuffle recycles the discards (minus the top card) back into the draw
+      // deck — that's public information, so the shared discard pile must shrink
+      const discard = a.reshuffled && s.discard.length ? [s.discard[s.discard.length - 1]] : s.discard;
       if (s.pendingFor === a.by) {                                  // settling a Draw-Two/+4 penalty
-        return { ...s, counts: { ...s.counts, [a.by]: s.counts[a.by] + n }, pendingFor: null, pendingN: 0, pendingId: s.pendingId + 1 };
+        return { ...s, discard, counts: { ...s.counts, [a.by]: s.counts[a.by] + n }, pendingFor: null, pendingN: 0, pendingId: s.pendingId + 1 };
       }
       if (a.by !== s.turn) return s;                                // normal turn draw
-      return { ...s, counts: { ...s.counts, [a.by]: s.counts[a.by] + n } };
+      return { ...s, discard, counts: { ...s.counts, [a.by]: s.counts[a.by] + n } };
     }
 
     if (a.type === 'pass') {
