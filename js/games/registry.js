@@ -5,13 +5,15 @@ import '../games/tetris.js';
 import '../games/wordrush.js';
 import '../games/twentyq.js';
 import '../games/draw.js';
+import '../games/uno.js';        // UNO Duel
+import '../games/ludo.js';       // Ludo Duel
 import '../games/prompted.js';   // This or That + Heat Check
 import '../games/duo-games.js';  // NHIE (std + 18+) + Spicy WYR
 import '../games/truthdare.js';
 
 import { allGames } from './engine.js';
 
-export const CLASSIC_GAMES = ['tictactoe', 'connect4', 'memory', 'tetris', 'wordrush', 'draw', 'twentyq', 'thisorthat', 'nhie'];
+export const CLASSIC_GAMES = ['tictactoe', 'connect4', 'memory', 'tetris', 'uno', 'ludo', 'wordrush', 'draw', 'twentyq', 'thisorthat', 'nhie'];
 export const ADULT_GAMES = ['nhie18', 'truthdare', 'wyr', 'heatcheck'];
 
 export function gameMeta(id) { return allGames().find((g) => g.id === id); }
