@@ -498,7 +498,7 @@ registerGame({
     if (a.type === 'next') return advanceTot(s);
     if (a.type !== 'pick' || s.phase !== 'pick' || s[a.by] != null) return s;
     const next = { ...s, [a.by]: a.v };
-    if (next.a != null && next.b != null) {
+    if (next.host != null && next.guest != null) {
       return { ...next, phase: 'reveal', log: [...s.log, { q: TOT[s.order[s.i % TOT.length]][0], a: next.host, b: next.guest, match: next.host === next.guest }], done: s.done + 1 };
     }
     return next;
