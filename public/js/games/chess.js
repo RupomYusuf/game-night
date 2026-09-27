@@ -281,13 +281,13 @@ registerGame({
       : myTurn ? (inCheck(s.board, s.turn) ? 'You are in CHECK — save your king!' : 'Your move') : `${api.peerName} is thinking…`;
 
     el.append(
-      h('div', { class: 'scoreline' },
-        h('div', { class: 'sc' }, '⚪ ', h('b', {}, ctx.myRole === 'host' ? api.myName : api.peerName)),
-        h('div', { class: 'sc' }, s.phase === 'over' ? s.endReason : ''),
-        h('div', { class: 'sc' }, h('b', {}, ctx.myRole === 'host' ? api.peerName : api.myName), ' ⚫'),
-      ),
-      boardEl,
-      h('div', { class: 'g-center', style: 'gap:8px' },
+      h('div', { class: 'g-center', style: 'gap:10px' },
+        h('div', { class: 'scoreline' },
+          h('div', { class: 'sc' }, '⚪ ', h('b', {}, ctx.myRole === 'host' ? api.myName : api.peerName)),
+          h('div', { class: 'sc' }, s.phase === 'over' ? s.endReason : ''),
+          h('div', { class: 'sc' }, h('b', {}, ctx.myRole === 'host' ? api.peerName : api.myName), ' ⚫'),
+        ),
+        boardEl,
         h('div', { class: 'g-sub' + (myTurn && s.phase === 'play' ? ' turn-glow' : '') }, statusText),
         s.phase === 'over' ? h('button', { class: 'btn btn-primary', onclick: () => act({ type: 'rematch' }) }, 'New game ♟️') : null,
       ),
