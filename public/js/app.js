@@ -5,7 +5,7 @@ import { api, send, connect, disconnectStream } from './net.js';
 import { h, qs, toast, modal, confirmModal, confettiBurst, confetti } from './ui.js';
 import { sfx, haptic, buzz, toggleSound, toggleHaptics, toggleTheme } from './sound.js';
 import { buildChat, chatRoot, setChatMode, openSheet, closeSheet, ensureFab, removeFab, setUnread, onIncomingChat, onPeerSeen, setPeerTyping, onPeerReact, chatShown } from './chat.js';
-import { openGame, closeGame, resumeGame, onRemoteAction, onSnapshot, active as activeGame, getGame } from './games/engine.js';
+import { openGame, closeGame, resumeGame, onRemoteAction, onSnapshot, onRemoteClose, active as activeGame, getGame } from './games/engine.js';
 import { acceptJoin, rejectJoin } from './net.js';
 import { classicMeta, adultMeta, gameMeta } from './games/registry.js';
 
@@ -118,7 +118,7 @@ function wireEvents() {
   });
 
   on('game-open', (p) => { resumeGame(p, null); });
-  on('game-close', () => { closeGame(); if (screen === 'hub') showGamesMenu(); });
+  on('game-close', () => { onRemoteClose(); if (screen === 'hub') showGamesMenu(); });
   on('game-act', (p) => onRemoteAction(p));
   on('game-state', (p) => onSnapshot(p));
   on('game-started', () => { if (screen === 'hub') showGameView(); });

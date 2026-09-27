@@ -26,16 +26,18 @@ export function toast(msg, ms = 2400) {
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, ms);
 }
 
-/** Center modal. Returns the modal element; caller wires buttons. close() removes it. */
+/** Center modal. Returns the modal element; caller wires buttons. close() removes it.
+    The returned object's `close` can be re-assigned to hook cleanup (camera streams etc.);
+    backdrop taps always go through the current `close`. */
 export function modal(build) {
   const root = qs('#overlays');
   const box = h('div', { class: 'modal glass' });
   const ov = h('div', { class: 'overlay' }, box);
-  ov.addEventListener('pointerdown', (e) => { if (e.target === ov) close(); });
-  function close() { ov.remove(); }
-  build(box, close);
+  const api = { box, close: () => ov.remove() };
+  ov.addEventListener('pointerdown', (e) => { if (e.target === ov) api.close(); });
+  build(box, () => api.close());
   root.append(ov);
-  return { box, close };
+  return api;
 }
 
 export function confirmModal({ title, body, okLabel = 'Yes', cancelLabel = 'Cancel', hot = false }) {
