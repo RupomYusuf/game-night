@@ -1,6 +1,7 @@
 /* Import every game file — each self-registers with the engine.
    Menu order lives here. */
 import '../games/board.js';
+import '../games/tetris.js';
 import '../games/wordrush.js';
 import '../games/twentyq.js';
 import '../games/draw.js';
@@ -10,7 +11,7 @@ import '../games/truthdare.js';
 
 import { allGames } from './engine.js';
 
-export const CLASSIC_GAMES = ['tictactoe', 'connect4', 'memory', 'wordrush', 'draw', 'twentyq', 'thisorthat', 'nhie'];
+export const CLASSIC_GAMES = ['tictactoe', 'connect4', 'memory', 'tetris', 'wordrush', 'draw', 'twentyq', 'thisorthat', 'nhie'];
 export const ADULT_GAMES = ['nhie18', 'truthdare', 'wyr', 'heatcheck'];
 
 export function gameMeta(id) { return allGames().find((g) => g.id === id); }

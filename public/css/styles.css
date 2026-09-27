@@ -489,3 +489,17 @@ img, video { max-width: 100%; display: block; }
   .chat-pane.desk { display: none; }
 }
 @media (min-width: 920px) { .chat-fab, .chat-sheet, .sheet-backdrop { display: none !important; } }
+
+/* tetris race */
+.tk-boards { display: flex; gap: 10px; justify-content: center; align-items: flex-start; width: 100%; }
+.tk-col { display: flex; flex-direction: column; gap: 6px; align-items: center; min-width: 0; }
+.tk-board { border-radius: 10px; border: 1.5px solid var(--glass-border); background: #0b0b16; width: min(40vw, 190px); height: auto; touch-action: none; }
+.tk-mid { display: flex; flex-direction: column; gap: 5px; align-items: center; padding-top: 2px; }
+.tk-mini { border-radius: 8px; border: 1px solid var(--glass-border); background: #0b0b16; width: 84px; height: auto; }
+.tk-info { font-size: 12px; color: var(--ink-faint); text-align: center; line-height: 1.5; }
+.tk-name { font-size: 12.5px; font-weight: 800; color: var(--ink-faint); letter-spacing: .4px; text-transform: uppercase; }
+.tk-timer { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 22px; }
+.tk-timer.low { color: #ff5f6d; animation: tb .9s infinite; }
+.tk-controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.tk-btn { width: 46px; height: 42px; border-radius: 12px; border: 1.5px solid var(--glass-border); background: var(--glass-strong); color: var(--ink); font-size: 17px; font-weight: 700; }
+.tk-btn:active { transform: scale(.92); border-color: var(--g1); }
