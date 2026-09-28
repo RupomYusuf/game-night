@@ -697,3 +697,32 @@ img, video { max-width: 100%; display: block; }
   .game-bar h2 { font-size: 16px; }
   .game-bar { padding: 4px 2px 10px; }
 }
+
+/* dots and boxes */
+.dbboard { position: relative; width: min(88vw, 420px); aspect-ratio: 1; background: var(--glass); border-radius: 14px; border: 1.5px solid var(--glass-border); }
+.dbdot { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--ink); transform: translate(-50%, -50%); z-index: 2; }
+.dbedge { position: absolute; background: transparent; border: none; cursor: pointer; border-radius: 4px; transition: background .15s; }
+.dbedge:hover:not(.claimed) { background: rgba(255, 95, 162, .25); }
+.dbedge.claimed { cursor: default; }
+.dbedge.claimed.host { background: var(--g1); }
+.dbedge.claimed.guest { background: var(--b1, #4f9dff); }
+.dbbox { position: absolute; display: grid; place-items: center; font-size: 20px; border-radius: 8px; }
+.dbbox.claimed.host { background: rgba(255, 95, 162, .22); animation: dbPop .4s var(--ease); }
+.dbbox.claimed.guest { background: rgba(79, 157, 255, .22); animation: dbPop .4s var(--ease); }
+@keyframes dbPop { 0% { transform: scale(.5); opacity: 0; } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+/* emoji guess duel */
+.emj { font-size: clamp(40px, 11vw, 64px); letter-spacing: .12em; line-height: 1.2; }
+
+/* yes no maybe */
+.ynmrow { display: flex; gap: 12px; }
+.ynm-btn { width: 108px; padding: 14px 0; border-radius: 16px; font-weight: 900; letter-spacing: .04em; border: 2px solid transparent; transition: transform .12s var(--ease); }
+.ynm-btn:active { transform: scale(.94); }
+.ynm-btn.yes { background: rgba(74, 222, 128, .16); border-color: #4ade80; color: #4ade80; }
+.ynm-btn.maybe { background: rgba(255, 176, 46, .14); border-color: #ffb02e; color: #ffb02e; }
+.ynm-btn.no { background: rgba(255, 95, 109, .12); border-color: rgba(255, 95, 109, .6); color: #ff8aa0; }
+.ynm-outcome { padding: 12px 20px; border-radius: 14px; font-weight: 800; animation: cardPop .4s var(--ease); }
+.ynm-outcome.match { background: rgba(74, 222, 128, .14); color: #4ade80; border: 1.5px solid #4ade80; }
+.ynm-outcome.soft { background: rgba(255, 176, 46, .12); color: #ffb02e; border: 1.5px solid #ffb02e; }
+.ynm-outcome.sealed { background: rgba(128, 128, 160, .12); color: var(--ink-faint); border: 1.5px solid var(--glass-border); }
+.ynm-hit { padding: 7px 12px; border-radius: 10px; background: rgba(74, 222, 128, .08); margin-bottom: 6px; font-size: 14px; }
